@@ -86,7 +86,7 @@ def test_fenton_velocity_acceleration_infinite_depth_matches_25_lengths():
     # For infinite depth z=0 is the still water level, the "deep" wave has z=0 at the floor
     z_inf = np.full_like(x, -5.0)
     z_deep = z_inf + 25 * length
-    for kw in (dict(all_points_wet=True), dict()):
+    for kw in ({"all_points_wet": True}, {}):
         assert np.allclose(
             wave_inf.velocity(x, z_inf, **kw), wave_deep.velocity(x, z_deep, **kw), atol=1e-8
         )
@@ -137,4 +137,6 @@ def test_fenton_stream_function_deep_water():
     wave_deep = raschii.FentonWave(height=2.0, depth=25 * length, length=length, N=10)
     x = np.linspace(0, length, 5)
     z = np.full_like(x, -5.0)
-    assert np.allclose(wave_inf.stream_function(x, z), wave_deep.stream_function(x, z + 25 * length))
+    assert np.allclose(
+        wave_inf.stream_function(x, z), wave_deep.stream_function(x, z + 25 * length)
+    )

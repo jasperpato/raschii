@@ -148,7 +148,7 @@ def blend_air_and_wave_velocities(x, z, t, wave, air, vel, eta_eps):
     if air is not None and above.any():
         if wave.depth < 0:
             raise RaschiiError("Air-phase blending is not supported for infinite depth waves")
-        d =air.blending_height + wave.depth
+        d = air.blending_height + wave.depth
         xa = x[above]
         za = z[above]
         ea = eta[above]
