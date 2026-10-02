@@ -1,4 +1,3 @@
-import math
 from enum import StrEnum
 from math import pi, tanh
 
@@ -97,52 +96,14 @@ def check_breaking_criteria(
     return err, warn
 
 
-def sinh_by_cosh(a, b):
-    """
-    A version of sinh(a)/cosh(b) where "b = a * f" and f is close
-    to 1. This can then be written exp(a * (1 - f)) for large a
-    """
-    ans = np.zeros(a.size, float)
-    for i, (ai, bi) in enumerate(zip(a, b)):
-        if ai == 0:
-            continue
-        f = bi / ai
-        if (ai > 30 and 0.5 < f < 1.5) or (ai > 200 and 0.1 < f < 1.9):
-            ans[i] = math.exp(ai * (1 - f))
-        else:
-            sa = math.sinh(ai)
-            cb = math.cosh(bi)
-            ans[i] = sa / cb
-    return ans
-
-
-def cosh_by_cosh(a, b):
-    """
-    A version of cosh(a)/cosh(b) where "b = a * f" and f is close
-    to 1. This can then be written exp(a * (1 - f)) for large a
-    """
-    ans = np.zeros(a.size, float)
-    for i, (ai, bi) in enumerate(zip(a, b)):
-        if ai == 0:
-            ans[i] = 1.0 / math.cosh(bi)
-            continue
-        f = bi / ai
-        if (ai > 30 and 0.5 < f < 1.5) or (ai > 200 and 0.1 < f < 1.9):
-            ans[i] = math.exp(ai * (1 - f))
-        else:
-            ca = math.cosh(ai)
-            cb = math.cosh(bi)
-            ans[i] = ca / cb
-    return ans
-
-
 def cosh_ratio(a, b):
     """
     Compute cosh(a)/cosh(b) stably for numpy arrays of any shape.
 
     When cosh(b) overflows (large |b|) the result is approximated by
     exp(a - |b|), which has relative error 2*exp(-2*|b|) < 1e-26 for |b| > 30.
-    Intended for 0 <= a <= b so that the ratio is always in (0, 1].
+    Intended for 0 <= a <= b so that the ratio is always in (0, 1], but values
+    of a slightly above b (as in the free surface equations) are also fine.
     """
     with np.errstate(over="ignore", invalid="ignore"):
         cosh_b = np.cosh(b)
@@ -155,6 +116,17 @@ def cosh_ratio(a, b):
     if np.any(bad):
         result = np.where(bad, np.exp(a - np.abs(b)), result)
     return result
+
+
+def sinh_ratio(a, b):
+    """
+    Compute sinh(a)/cosh(b) stably for numpy arrays of any shape, without
+    overflow for large |a| and |b|. Written in terms of exp(|a| - |b|).
+    """
+    a = np.asarray(a, dtype=float)
+    abs_a, abs_b = np.abs(a), np.abs(b)
+    num = np.exp(abs_a - abs_b) - np.exp(-abs_a - abs_b)
+    return np.sign(a) * num / (1.0 + np.exp(-2.0 * abs_b))
 
 
 def blend_air_and_wave_velocities(x, z, t, wave, air, vel, eta_eps):
@@ -170,10 +142,13 @@ def blend_air_and_wave_velocities(x, z, t, wave, air, vel, eta_eps):
     and 1 at the blending heigh. After taking the derivatives of this blended
     stream function the velocities are as can be seen in the code below.
     """
-    eta = wave.surface_elevation(x, t)
+    # For infinite depth z is measured from the still water level, otherwise from the floor
+    eta = wave.surface_elevation(x, t, include_depth=wave.depth >= 0)
     above = z > eta + eta_eps
     if air is not None and above.any():
-        d = air.blending_height + wave.depth
+        if wave.depth < 0:
+            raise RaschiiError("Air-phase blending is not supported for infinite depth waves")
+        d =air.blending_height + wave.depth
         xa = x[above]
         za = z[above]
         ea = eta[above]
@@ -190,14 +165,9 @@ def blend_air_and_wave_velocities(x, z, t, wave, air, vel, eta_eps):
             psi_air = air.stream_function(xb, zb, t, frame=Frame.WAVE)
             detadx = wave.surface_slope(xb, t)
 
-            if False:
-                # Cubic smoothstep
-                f = Z * Z * (3 - 2 * Z)
-                dfdZ = 6 * Z - 6 * Z * Z
-            else:
-                # Fift order smootherstep
-                f = Z * Z * Z * (Z * (Z * 6 - 15) + 10)
-                dfdZ = Z * Z * (30 + Z * (30 * Z - 60))
+            # Fifth order smootherstep
+            f = Z * Z * Z * (Z * (Z * 6 - 15) + 10)
+            dfdZ = Z * Z * (30 + Z * (30 * Z - 60))
 
             dZdx = (zb - d) / (d - eb) ** 2 * detadx
             dZdz = 1 / (d - eb)

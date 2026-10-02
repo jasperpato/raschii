@@ -7,13 +7,11 @@ from numpy import (
     atleast_1d,
     broadcast_arrays,
     cos,
-    cosh,
     isfinite,
     linspace,
     newaxis,
     pi,
     sin,
-    sinh,
     stack,
     sum,
     zeros,
@@ -27,9 +25,8 @@ from .common import (
     NonConvergenceError,
     RaschiiError,
     blend_air_and_wave_velocities,
-    cosh_by_cosh,
     cosh_ratio,
-    sinh_by_cosh,
+    sinh_ratio,
     trapezoid_integration,
 )
 from .cpp import FentonCppGenerator
@@ -167,10 +164,12 @@ class FentonWave(WaveModel):
         k = self.k
         J = arange(1, N + 1)
 
-        psi = (sinh(J * k * z2) / cosh(J * k * self.depth) * cos(J * k * x2)).dot(B[1:])
+        depth = 25.0 * self.length if self.depth < 0 else self.depth
+        z2 = z2 + self._z_shift
+        psi = (sinh_ratio(J * k * z2, J * k * depth) * cos(J * k * x2)).dot(B[1:])
 
         if frame == Frame.EARTH:
-            return B[0] * z + psi
+            return B[0] * (asarray(z, dtype=float) + self._z_shift) + psi
         elif frame == Frame.WAVE:
             return psi
         else:
@@ -192,6 +191,20 @@ class FentonWave(WaveModel):
         else:
             subtract = 25 * self.length if self.depth < 0 else self.depth
         return eta - subtract
+
+    @property
+    def _z_shift(self) -> float:
+        """
+        Distance to add to the user z coordinate to get the height above the
+        (fictitious) sea floor used in the Fourier series. For finite depth z is
+        already measured from the sea floor. For infinite depth (depth < 0) z is
+        measured from the still water level and the floor is 25 wave lengths down.
+        """
+        return 25.0 * self.length if self.depth < 0 else 0.0
+
+    def _surface_elevation_zframe(self, x, t):
+        "Surface elevation in the same z coordinate system as velocity() takes"
+        return self.surface_elevation(x, t, include_depth=self.depth >= 0)
 
     def surface_slope(self, x, t=0):
         """
@@ -217,15 +230,15 @@ class FentonWave(WaveModel):
         B = self.data["B"]
         k = self.k
         c = self.c
-        depth = self.depth
+        depth = 25.0 * self.length if self.depth < 0 else self.depth
         J = arange(1, N + 1)
 
         phase = J * k * (x - c * t)[..., newaxis]  # (n_times, n_points, N)
-        kz = J * k * z[..., newaxis]  # (1, n_points, N)
+        kz = J * k * (z + self._z_shift)[..., newaxis]  # (1, n_points, N)
         kh = J * k * depth  # (N,)
 
-        vel_x = k * sum(J * B[1:] * cos(phase) * cosh(kz) / cosh(kh), axis=-1)
-        vel_z = k * sum(J * B[1:] * sin(phase) * sinh(kz) / cosh(kh), axis=-1)
+        vel_x = k * sum(J * B[1:] * cos(phase) * cosh_ratio(kz, kh), axis=-1)
+        vel_z = k * sum(J * B[1:] * sin(phase) * sinh_ratio(kz, kh), axis=-1)
         vel = stack([vel_x, vel_z], axis=-1)  # (n_times, n_points, 2)
 
         if not all_points_wet:
@@ -244,8 +257,12 @@ class FentonWave(WaveModel):
         all_points_wet: bool = False,
     ):
         """
-        Compute the horizontal and vertical fluid acceleration at each position
-        ``(x, z)`` at each time ``t``.
+        Compute the horizontal and vertical fluid particle acceleration at each
+        position ``(x, z)`` at each time ``t``.
+
+        This is the full material derivative, ``Du/Dt = du/dt + (u . grad) u``,
+        i.e., the acceleration of a fluid particle passing through the point,
+        including the convective terms. It is not just the local ``du/dt``.
 
         .. note::
 
@@ -261,7 +278,8 @@ class FentonWave(WaveModel):
             Horizontal position(s).
         z : float | array
             Vertical position(s) where z = 0 at the sea floor and
-            z = depth at the free surface.
+            z = depth at the free surface. For infinite depth (``depth=-1``)
+            z = 0 is the still water level instead, and z < 0 is below it.
         t : float | array, optional
             Time(s) at which to compute the acceleration (default 0).
         all_points_wet : bool, optional
@@ -291,22 +309,42 @@ class FentonWave(WaveModel):
         B = self.data["B"]
         k = self.k
         c = self.c
-        depth = self.depth
+        depth = 25.0 * self.length if self.depth < 0 else self.depth
         J = arange(1, N + 1)
 
         phase = J * k * (x - c * t)[..., newaxis]  # shape (n_times, n_points, N)
-        kz = J * k * z[..., newaxis]  # shape (1, n_points, N)
+        kz = J * k * (z + self._z_shift)[..., newaxis]  # shape (1, n_points, N)
         kh = J * k * depth  # shape (N,)
 
-        acc_x = k * sum(J * B[1:] * J * k * c * sin(phase) * cosh(kz) / cosh(kh), axis=-1)
-        acc_z = k * sum(J * B[1:] * J * k * -c * cos(phase) * sinh(kz) / cosh(kh), axis=-1)
+        C = cosh_ratio(kz, kh)  # (1, n_points, N)
+        S = sinh_ratio(kz, kh)  # (1, n_points, N)
+        sin_p, cos_p = sin(phase), cos(phase)
+        JBk = J * B[1:] * J * k  # shape (N,)
+
+        # Velocity (earth frame)
+        u = k * sum(J * B[1:] * cos_p * C, axis=-1)
+        w = k * sum(J * B[1:] * sin_p * S, axis=-1)
+
+        # Local acceleration, du/dt and dw/dt
+        dudt = k * sum(JBk * c * sin_p * C, axis=-1)
+        dwdt = k * sum(JBk * -c * cos_p * S, axis=-1)
+
+        # Velocity gradients
+        dudx = k * sum(JBk * -sin_p * C, axis=-1)
+        dudz = k * sum(JBk * cos_p * S, axis=-1)
+        dwdx = k * sum(JBk * cos_p * S, axis=-1)  # = dudz, the flow is irrotational
+        dwdz = k * sum(JBk * sin_p * C, axis=-1)  # = -dudx, the flow is divergence free
+
+        # Material derivative, Du/Dt = du/dt + u du/dx + w du/dz
+        acc_x = dudt + u * dudx + w * dudz
+        acc_z = dwdt + u * dwdx + w * dwdz
 
         acc = stack([acc_x, acc_z], axis=-1)  # shape (n_times, n_points, 2)
 
         if not all_points_wet:
             if self.air is not None:
                 eta = asarray(
-                    [self.surface_elevation(x_1d, float(ti)) for ti in t_1d], dtype=float
+                    [self._surface_elevation_zframe(x_1d, float(ti)) for ti in t_1d], dtype=float
                 )  # (n_times, n_points)
                 above = z_1d[newaxis, :] > eta + self.eta_eps  # (n_times, n_points)
                 if above.any():
@@ -319,7 +357,7 @@ class FentonWave(WaveModel):
             else:
                 # Zero out accelerations above the free surface (no air model)
                 for i, ti in enumerate(t_1d):
-                    eta_i = asarray(self.surface_elevation(x_1d, float(ti)), dtype=float)
+                    eta_i = asarray(self._surface_elevation_zframe(x_1d, float(ti)), dtype=float)
                     above_i = z_1d > eta_i + self.eta_eps
                     if above_i.any():
                         acc[i, above_i] = 0.0
@@ -490,14 +528,13 @@ def wave_height_steps(num_steps, D, lam, H):
     Hb = 0.142 * math.tanh(2 * pi * D / lam) * lam
 
     # Try with progressively higher waves to get better initial conditions
-    if num_steps is not None:
-        pass
-    if H > 0.75 * Hb:
-        num_steps = 10
-    elif H > 0.65 * Hb:
-        num_steps = 5
-    else:
-        num_steps = 3
+    if num_steps is None:
+        if H > 0.75 * Hb:
+            num_steps = 10
+        elif H > 0.65 * Hb:
+            num_steps = 5
+        else:
+            num_steps = 3
 
     if num_steps == 1:
         return [H]
@@ -521,8 +558,8 @@ def func(coeffs, H, k, D, J, M):
 
     # Loop over the N + 1 points along the half wave
     for m in M:
-        S1 = sinh_by_cosh(J * k * eta[m], J * k * D)
-        C1 = cosh_by_cosh(J * k * eta[m], J * k * D)
+        S1 = sinh_ratio(J * k * eta[m], J * k * D)
+        C1 = cosh_ratio(J * k * eta[m], J * k * D)
         S2 = sin(J * m * pi / N)
         C2 = cos(J * m * pi / N)
 
@@ -572,8 +609,8 @@ def fprime(coeffs, H, k, D, J, M):
     eta = coeffs[N + 1 : 2 * N + 2]
 
     for m in range(N + 1):
-        S1 = sinh_by_cosh(J * k * eta[m], J * k * D)
-        C1 = cosh_by_cosh(J * k * eta[m], J * k * D)
+        S1 = sinh_ratio(J * k * eta[m], J * k * D)
+        C1 = cosh_ratio(J * k * eta[m], J * k * D)
         S2 = sin(J * m * pi / N)
         C2 = cos(J * m * pi / N)
 

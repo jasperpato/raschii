@@ -1,41 +1,48 @@
 import numpy
 
-from raschii.common import sinh_by_cosh, cosh_by_cosh, cosh_ratio
+from raschii.common import sinh_ratio, cosh_ratio
 
 
-def test_sinh_by_cosh():
+def test_sinh_ratio():
     end = 45
     for f in numpy.linspace(0.001, 2, 100):
         # Compute the two approximations
         a = numpy.linspace(0, end, 1001)
         b = numpy.linspace(0, end, 1001) * f
         f1 = numpy.sinh(a) / numpy.cosh(b)
-        f2 = sinh_by_cosh(a, b)
-        check_arrays(f1, f2, 1e-5, 1e-12)
+        f2 = sinh_ratio(a, b)
+        # Relative error is what matters when the ratio is huge (f > 1)
+        check_arrays(f1, f2, 1e-5, 1e-12, atol2_lim=1e6)
 
     # Some handpicked tests
     a = numpy.array([0.0, 0.0, 1.0, 1.0, 199.0], float)
     b = numpy.array([0.0, 1.0, 0.0, 1.0, 199.0], float)
     f1 = numpy.sinh(a) / numpy.cosh(b)
-    f2 = sinh_by_cosh(a, b)
+    f2 = sinh_ratio(a, b)
     check_arrays(f1, f2, 1e-5, 1e-12)
 
+    # Odd in a, and no overflow for large arguments
+    a = numpy.array([-5.0, -1.0, 1.0, 5.0])
+    numpy.testing.assert_allclose(sinh_ratio(a, 2.0), numpy.sinh(a) / numpy.cosh(2.0))
+    got = sinh_ratio(numpy.array([-900.0, 0.0, 800.0]), numpy.array([1000.0, 1000.0, 1000.0]))
+    numpy.testing.assert_allclose(got, [-numpy.exp(-100.0), 0.0, numpy.exp(-200.0)], rtol=1e-12)
 
-def test_cosh_by_cosh():
+
+def test_cosh_ratio_a_above_b():
     end = 45
     for f in numpy.linspace(0.001, 2, 100):
         # Compute the two approximations
         a = numpy.linspace(0, end, 1001)
         b = numpy.linspace(0, end, 1001) * f
         f1 = numpy.cosh(a) / numpy.cosh(b)
-        f2 = cosh_by_cosh(a, b)
+        f2 = cosh_ratio(a, b)
         check_arrays(f1, f2, 1e-5, 1e-12)
 
     # Some handpicked tests
     a = numpy.array([0.0, 0.0, 1.0, 1.0, 199.0], float)
     b = numpy.array([0.0, 1.0, 0.0, 1.0, 199.0], float)
     f1 = numpy.cosh(a) / numpy.cosh(b)
-    f2 = cosh_by_cosh(a, b)
+    f2 = cosh_ratio(a, b)
     check_arrays(f1, f2, 1e-5, 1e-12)
 
 

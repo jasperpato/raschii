@@ -261,3 +261,39 @@ def test_fenton_stream_function_and_slope():
         slope_num = (e1 - e0) / eps
         print("x: %r, eta: %r, slope: %r, slope_num: %r" % (x, e0, slope, slope_num))
         assert abs(slope[0] - slope_num) < 1e-5
+
+
+def test_fenton_acceleration_is_material_derivative():
+    """Du/Dt must match a finite difference of velocity along a particle path"""
+    import numpy as np
+
+    import raschii
+
+    wave = raschii.FentonWave(height=3.0, depth=10.0, length=60.0, N=15)
+    dt = 1e-5
+    for x0, z0, t0 in [(0.0, 9.0, 0.0), (12.0, 5.0, 1.3), (30.0, 2.0, 4.0)]:
+        u0 = wave.velocity(x0, z0, t0, all_points_wet=True)
+        # Midpoint (second order) step along the particle path
+        xm, zm = x0 + 0.5 * dt * u0[0], z0 + 0.5 * dt * u0[1]
+        um = wave.velocity(xm, zm, t0 + 0.5 * dt, all_points_wet=True)
+        x1, z1 = x0 + dt * um[0], z0 + dt * um[1]
+        u1 = wave.velocity(x1, z1, t0 + dt, all_points_wet=True)
+        expected = (u1 - u0) / dt
+        got = wave.acceleration(x0, z0, t0, all_points_wet=True)
+        assert np.allclose(got, expected, rtol=1e-3, atol=1e-4), (got, expected)
+
+
+def test_fenton_acceleration_differs_from_local():
+    """The convective term is non-zero for a finite amplitude wave"""
+    import numpy as np
+
+    import raschii
+
+    wave = raschii.FentonWave(height=3.0, depth=10.0, length=60.0, N=15)
+    x, z, t, dt = 5.0, 8.0, 0.0, 1e-5
+    local = (
+        wave.velocity(x, z, t + dt, all_points_wet=True)
+        - wave.velocity(x, z, t - dt, all_points_wet=True)
+    ) / (2 * dt)
+    full = wave.acceleration(x, z, t, all_points_wet=True)
+    assert not np.allclose(local, full, rtol=1e-6, atol=1e-8)

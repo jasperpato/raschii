@@ -2,7 +2,7 @@ from numpy import arange, asarray, cos, cosh, newaxis, sin, sinh, zeros
 from numpy.linalg import solve
 
 from .base_classes import AirPhaseModel
-from .common import AIR_BLENDING_HEIGHT_FACTOR, Frame, sinh_by_cosh
+from .common import AIR_BLENDING_HEIGHT_FACTOR, Frame, sinh_ratio
 
 
 class FentonAirPhase(AirPhaseModel):
@@ -113,7 +113,7 @@ def air_velocity_coefficients(x, eta, c, k, depth_water, height_air):
     lhs = zeros((Neq, Nuk), float)
     rhs = zeros(Neq, float)
     for m in range(Nm):
-        S1 = sinh_by_cosh(J * k * z[m], J * k * D)
+        S1 = sinh_ratio(J * k * z[m], J * k * D)
         C2 = cos(J * k * x[m])
 
         # The free surface is a stream line (stream func = const Q)

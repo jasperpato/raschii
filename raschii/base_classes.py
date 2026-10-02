@@ -83,6 +83,8 @@ class WaveModel:
         """
         Compute the fluid velocity at time t for position(s) (x, z)
         where z is 0 at the bottom and equal to depth at the free surface.
+        For Fenton waves with infinite depth (``depth=-1``) z is instead 0 at
+        the still water level, with z < 0 below it.
 
         Output shape:
 

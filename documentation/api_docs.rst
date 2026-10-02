@@ -77,7 +77,8 @@ The following methods are only available on specific wave model classes.
      - Horizontal derivative dη/dx of the free-surface elevation.
      - :class:`~raschii.FentonWave`
    * - ``acceleration(x, z, t=0, all_points_wet=False)``
-     - Fluid acceleration.  Water-phase only; returns zero above the free
+     - Fluid particle acceleration (material derivative Du/Dt, including the
+       convective terms).  Water-phase only; returns zero above the free
        surface (air blending is not yet implemented for accelerations).
      - :class:`~raschii.FentonWave`
 
