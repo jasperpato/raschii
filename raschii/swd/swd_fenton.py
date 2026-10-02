@@ -16,6 +16,10 @@ class SwdWriterFenton(SwdWriter):
         wave = self.wave
         return 25.0 * wave.length if wave.depth < 0 else wave.depth
 
+    def _infinite_depth_z_offset(self, depth: float) -> float:
+        # For infinite depth z is measured from the still water level for Fenton waves
+        return 0.0
+
     def _elevation_coefficients(self, depth: float) -> np.ndarray:
         wave = self.wave
         nc = len(wave.eta)

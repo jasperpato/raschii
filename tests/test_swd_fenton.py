@@ -127,7 +127,10 @@ def test_swd_fenton_amp2(depth, tmpdir):
     eff_depth = 25.0 * length if depth < 0 else depth
     for x in [dx * i for i in range(20)]:
         phi_swd = swd.surface_potential(x=x)[i_time].item()
-        z_surf = wave.surface_elevation(x=[x], t=t_check, include_depth=False)[0] + eff_depth
+        # For infinite depth z is measured from the still water level, not the (fictitious) floor
+        z_surf = wave.surface_elevation(x=[x], t=t_check, include_depth=False)[0]
+        if depth >= 0:
+            z_surf += eff_depth
         phi_ref = wave.velocity_potential(x=[x], z=[z_surf], t=t_check)[0]
         assert math.isclose(phi_swd, phi_ref, rel_tol=eps_r, abs_tol=eps_a), (
             f"x={x:.1f}: phi_swd={phi_swd:.6f}, phi_ref={phi_ref:.6f}"

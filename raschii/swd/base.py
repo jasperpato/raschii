@@ -105,9 +105,10 @@ class SwdWriter:
 
         # Surface elevation in z-from-bottom coordinates.
         # surface_elevation(include_depth=True) raises for infinite depth, so
-        # we fall back to the zero-mean elevation and add the effective depth.
+        # we fall back to the zero-mean elevation and add the z-offset of the model.
         if wave.depth < 0:
-            z_surf = wave.surface_elevation(x_samp, t=0, include_depth=False) + depth
+            z_surf = wave.surface_elevation(x_samp, t=0, include_depth=False)
+            z_surf = z_surf + self._infinite_depth_z_offset(depth)
         else:
             z_surf = wave.surface_elevation(x_samp, t=0, include_depth=True)
 
@@ -129,6 +130,13 @@ class SwdWriter:
     def _effective_depth(self) -> float:
         """Return the depth used in the SWD file (finite positive number)."""
         raise NotImplementedError
+
+    def _infinite_depth_z_offset(self, depth: float) -> float:
+        """
+        Return the vertical coordinate of the still water level in the z
+        coordinate used by ``velocity_potential`` for infinite depth waves.
+        """
+        return depth
 
     def _elevation_coefficients(self, depth: float) -> np.ndarray:
         """Return the real elevation Fourier amplitudes ecs[j]."""

@@ -46,9 +46,12 @@ class FentonCppGenerator:
         )
 
         if frame == Frame.EARTH:
-            return f"{np2py(B[0])!r} * x[2] + {cpp}"
+            return f"{c!r} * x[2] + {cpp}"
         elif frame == Frame.WAVE:
-            return cpp
+            u_c = np2py(wave.eulerian_current)
+            if u_c == 0.0:
+                return cpp
+            return f"{u_c!r} * x[2] + {cpp}"
 
     def elevation(self):
         """
@@ -131,6 +134,11 @@ class FentonCppGenerator:
             f"{facs[i]!r} * sin({Jk[i]!r} * (x[0] - {c!r} * t)) * sinh({Jk[i]!r} * x[2])"
             for i in range(N)
         )
+
+        # The uniform current velocity (zero without a current)
+        u_c = np2py(wave.eulerian_current)
+        if u_c != 0.0:
+            cpp_x = f"{u_c!r} + {cpp_x}"
 
         if all_points_wet:
             return cpp_x, cpp_z

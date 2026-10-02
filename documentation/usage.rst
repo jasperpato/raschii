@@ -86,6 +86,16 @@ Wave order, *N*:
   nonsensical results for steep waves, such as finding an irregular
   two-peak solution).
 
+Wave *current* (Fenton waves only):
+  given in m/s, positive in the direction of wave propagation (default 0).
+  Together with the period this gives the wave length like in the Fourier program by
+  John Fenton. The period is then the Doppler shifted period seen from a fixed point.
+
+Wave *current_criterion* (Fenton waves only):
+  how *current* is defined, either ``"eulerian"`` (default) for the mean velocity at a
+  fixed point below the wave troughs, or ``"stokes"`` for the mean mass transport
+  velocity (finite depth only).
+
 See the API docs for :class:`~raschii.AiryWave`, :class:`~raschii.StokesWave`, and
 :class:`~raschii.FentonWave` for more information.
 

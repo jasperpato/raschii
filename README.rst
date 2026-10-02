@@ -151,6 +151,34 @@ Raschii is automatically tested using pytest and GitHub Actions and the current 
 Releases
 --------
 
+Development version
+...................
+
+New features:
+
+- Current speed for Fenton waves. Give ``current`` (positive in the direction of wave propagation)
+  together with ``period`` to find the wave length like in the Fourier program by John Fenton. The
+  period is the one seen from a fixed point, i.e., the Doppler shifted period. The
+  ``current_criterion`` input selects how the current is defined, either ``"eulerian"`` (default,
+  the mean velocity at a fixed point below the troughs) or ``"stokes"`` (the mean mass transport
+  velocity). The default ``current=0`` gives the same waves as before. SWD files cannot represent
+  a wave with a current.
+
+Changes:
+
+- Fenton ``acceleration()`` is now the full material derivative Du/Dt, including the convective
+  terms, and not only the local derivative du/dt.
+
+- For Fenton waves with infinite depth (``depth=-1``) the vertical coordinate ``z`` of
+  ``velocity()``, ``acceleration()``, ``stream_function()`` and ``velocity_potential()`` is now
+  measured from the still water level (``z < 0`` is below it). Air-phase blending is not supported
+  for infinite depth waves.
+
+Bug fixes:
+
+- Fenton ``velocity()``, ``acceleration()`` and ``stream_function()`` no longer overflow for deep
+  water waves, and a user supplied ``num_steps`` is now used.
+
 Version 2.0.0 - July 7. 2026
 ............................
 
