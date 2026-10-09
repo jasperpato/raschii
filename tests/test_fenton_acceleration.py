@@ -52,10 +52,16 @@ def test_invalid_kind():
 
 
 @pytest.mark.parametrize("kind", ["material", "local"])
-def test_deep_water_is_finite(kind):
+def test_deep_water_matches_finite_depth(kind):
     wave = raschii.FentonWave(height=3.0, depth=-1, length=100.0, N=10)
-    acc = wave.acceleration(np.array([0.0, 10.0]), np.array([wave.depth - 1, wave.depth - 5]), kind=kind, all_points_wet=True)
+    deep = raschii.FentonWave(height=3.0, depth=5000.0, length=100.0, N=10)
+    z_surf = 25 * wave.length  # infinite depth is modelled as 25 wave lengths
+    x = np.array([0.0, 10.0, 30.0])
+    z = np.array([z_surf - 1.0, z_surf - 5.0, z_surf - 20.0])
+    acc = wave.acceleration(x, z, kind=kind, all_points_wet=True)
+    ref = deep.acceleration(x, deep.depth - (z_surf - z), kind=kind, all_points_wet=True)
     assert np.all(np.isfinite(acc))
+    assert np.allclose(acc, ref, atol=1e-6)
 
 
 def test_above_surface_is_zero_without_air():
